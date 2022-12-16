@@ -619,8 +619,24 @@ class Animation(mutils.Pose):
                 mutils.bakeConnected(objects, time=(start, end), sampleBy=sampleBy)
 
             for name in objects:
-                if maya.cmds.copyKey(name, time=(start, end), includeUpperBound=False, option="keys"):
+                # if maya.cmds.copyKey(name, time=(start, end), includeUpperBound=False, option="keys"):
+                _copyKey = 0
+                if maya.cmds.objectType(name) == "hikIKEffector" or maya.cmds.objectType(name) == "hikFKJoint":
+                    hikAttrList = maya.cmds.listConnections(name, source=False, destination=True, connections=True, plugs=True)
+                    for i in range(0, len(hikAttrList), 2):
+                        disconnectList = hikAttrList[i: i+2]
+                        maya.cmds.disconnectAttr(disconnectList[0], disconnectList[1])
+                    
+                    _copyKey = maya.cmds.copyKey(name, time=(start, end), includeUpperBound=False, option="keys")
+                    
+                    for i in range(0, len(hikAttrList), 2):
+                        connectList = hikAttrList[i: i+2]
+                        maya.cmds.connectAttr(connectList[0], connectList[1])
+                else:
+                    _copyKey = maya.cmds.copyKey(name, time=(start, end), includeUpperBound=False, option="keys")
+                    
 
+                if _copyKey:
                     # Might return more than one object when duplicating shapes or blendshapes
                     transform, = maya.cmds.duplicate(name, name="CURVE", parentOnly=True)
 
