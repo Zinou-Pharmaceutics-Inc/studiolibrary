@@ -2,7 +2,7 @@
 
 name = 'studiolibrary'
 
-version = '2.9.6.b3'
+version = '2.9.6.b3_hik'
 
 requires = ['maya']
 
