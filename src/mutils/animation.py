@@ -1,11 +1,11 @@
 # Copyright 2020 by Kurt Rathjen. All Rights Reserved.
 #
-# This library is free software: you can redistribute it and/or modify it 
-# under the terms of the GNU Lesser General Public License as published by 
-# the Free Software Foundation, either version 3 of the License, or 
-# (at your option) any later version. This library is distributed in the 
-# hope that it will be useful, but WITHOUT ANY WARRANTY; without even the 
-# implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+# This library is free software: you can redistribute it and/or modify it
+# under the terms of the GNU Lesser General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version. This library is distributed in the
+# hope that it will be useful, but WITHOUT ANY WARRANTY; without even the
+# implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 # See the GNU Lesser General Public License for more details.
 # You should have received a copy of the GNU Lesser General Public
 # License along with this library. If not, see <http://www.gnu.org/licenses/>.
@@ -57,7 +57,7 @@ class OutOfBoundsError(AnimationTransferError):
 def validateAnimLayers():
     """
     Check if the selected animation layer can be exported.
-    
+
     :raise: AnimationTransferError
     """
     if maya.cmds.about(q=True, batch=True):
@@ -98,12 +98,12 @@ def saveAnim(
     Example:
         import mutils
         mutils.saveAnim(
-            path="c:/example.anim", 
+            path="c:/example.anim",
             objects=["control1", "control2"]
             time=(1, 20),
             metadata={'description': 'Example anim'}
             )
-            
+
     :type path: str
     :type objects: None or list[str]
     :type time: (int, int) or None
@@ -113,7 +113,7 @@ def saveAnim(
     :type sequencePath: str
     :type metadata: dict or None
     :type bakeConnected: bool
-    
+
     :rtype: mutils.Animation
     """
     # Copy the icon path to the temp location
@@ -274,6 +274,27 @@ def insertStaticKeyframe(curve, time):
             maya.cmds.keyTangent(curve, time=(previousFrame, previousFrame), ott="step")
 
 
+def duplicateNode(node, name):
+    """Duplicate the given node.
+
+    :param node: Maya path.
+    :type node: str
+    :param name: Name for the duplicated node.
+    :type name: str
+    :returns: Duplicated node names.
+    :rtype: list[str]
+    """
+    if maya.cmds.nodeType(node) in ["transform", "joint"]:
+        new = maya.cmds.duplicate(node, name=name, parentOnly=True)[0]
+    else:
+        # Please let us know if this logic is causing issues.
+        new = maya.cmds.duplicate(node, name=name)[0]
+        shapes = maya.cmds.listRelatives(new, shapes=True) or []
+        if shapes:
+            return [shapes[0], new]
+    return [new]
+
+
 def loadAnims(
     paths,
     spacing=1,
@@ -395,7 +416,7 @@ class Animation(mutils.Pose):
     def select(self, objects=None, namespaces=None, **kwargs):
         """
         Select the objects contained in the animation.
-        
+
         :type objects: list[str] or None
         :type namespaces: list[str] or None
         :rtype: None
@@ -542,6 +563,9 @@ class Animation(mutils.Pose):
         """
         results = []
 
+        if path.endswith(".mb"):
+            return
+
         with open(path, "r") as f:
             for line in f.readlines():
                 if not line.startswith("select -ne"):
@@ -573,7 +597,7 @@ class Animation(mutils.Pose):
         :type sampleBy: int
         :type fileType: str
         :type bakeConnected: bool
-        
+
         :rtype: None
         """
         objects = list(self.objects().keys())
@@ -597,7 +621,7 @@ class Animation(mutils.Pose):
             raise AnimationTransferError(msg)
 
         # Check if animation exists
-        if mutils.getDurationFromNodes(objects or []) <= 0:
+        if mutils.getDurationFromNodes(objects or [], time=time) <= 0:
             msg = "No animation was found on the specified object/s! " \
                   "Please create a pose instead!"
             raise AnimationTransferError(msg)
@@ -619,38 +643,23 @@ class Animation(mutils.Pose):
                 mutils.bakeConnected(objects, time=(start, end), sampleBy=sampleBy)
 
             for name in objects:
-                # if maya.cmds.copyKey(name, time=(start, end), includeUpperBound=False, option="keys"):
-                _copyKey = 0
-                if maya.cmds.objectType(name) == "hikIKEffector" or maya.cmds.objectType(name) == "hikFKJoint":
-                    hikAttrList = maya.cmds.listConnections(name, source=False, destination=True, connections=True, plugs=True)
-                    for i in range(0, len(hikAttrList), 2):
-                        disconnectList = hikAttrList[i: i+2]
-                        maya.cmds.disconnectAttr(disconnectList[0], disconnectList[1])
-                    
-                    _copyKey = maya.cmds.copyKey(name, time=(start, end), includeUpperBound=False, option="keys")
-                    
-                    for i in range(0, len(hikAttrList), 2):
-                        connectList = hikAttrList[i: i+2]
-                        maya.cmds.connectAttr(connectList[0], connectList[1])
-                else:
-                    _copyKey = maya.cmds.copyKey(name, time=(start, end), includeUpperBound=False, option="keys")
-                    
-
-                if _copyKey:
-                    # Might return more than one object when duplicating shapes or blendshapes
-                    transform, = maya.cmds.duplicate(name, name="CURVE", parentOnly=True)
+                if maya.cmds.copyKey(name, time=(start, end), includeUpperBound=False, option="keys"):
+                    dstNodes = duplicateNode(name, "CURVE")
+                    dstNode = dstNodes[0]
+                    deleteObjects.extend(dstNodes)
 
                     if not FIX_SAVE_ANIM_REFERENCE_LOCKED_ERROR:
-                        mutils.disconnectAll(transform)
+                        mutils.disconnectAll(dstNode)
 
-                    deleteObjects.append(transform)
-                    maya.cmds.pasteKey(transform)
+                    # Make sure we delete all proxy attributes, otherwise pasteKey will duplicate keys
+                    mutils.Attribute.deleteProxyAttrs(dstNode)
+                    maya.cmds.pasteKey(dstNode)
 
-                    attrs = maya.cmds.listAttr(transform, unlocked=True, keyable=True) or []
+                    attrs = maya.cmds.listAttr(dstNode, unlocked=True, keyable=True) or []
                     attrs = list(set(attrs) - set(['translate', 'rotate', 'scale']))
 
                     for attr in attrs:
-                        dstAttr = mutils.Attribute(transform, attr)
+                        dstAttr = mutils.Attribute(dstNode, attr)
                         dstCurve = dstAttr.animCurve()
 
                         if dstCurve:
@@ -675,7 +684,7 @@ class Animation(mutils.Pose):
                             if maya.cmds.keyframe(dstCurve, query=True, time=(start, end), keyframeCount=True):
                                 self.setAnimCurve(name, attr, dstCurve)
                                 maya.cmds.cutKey(dstCurve, time=(MIN_TIME_LIMIT, start - 1))
-                                maya.cmds.cutKey(dstCurve, time=(end + 1, MAX_TIME_LIMIT))
+                                maya.cmds.cutKey(dstCurve, time=(end + 1, end + MAX_TIME_LIMIT))
                                 validCurves.append(dstCurve)
 
             fileName = "animation.ma"
@@ -797,13 +806,16 @@ class Animation(mutils.Pose):
                         continue
 
                     dstAttr = mutils.Attribute(dstNode.name(), attr)
-                    srcCurve = self.animCurve(srcNode.name(), attr, withNamespace=True)
 
-                    # Skip if the destination attribute does not exists.
                     if not dstAttr.exists():
-                        logger.debug('Skipping attribute: The destination attribute "%s.%s" does not exist!' %
-                                     (dstAttr.name(), dstAttr.attr()))
+                        logger.debug('Skipping attribute: The destination attribute "%s" does not exist!' % dstAttr.fullname())
                         continue
+
+                    if dstAttr.isProxy():
+                        logger.debug('Skipping attribute: The destination attribute "%s" is a proxy attribute!', dstAttr.fullname())
+                        continue
+
+                    srcCurve = self.animCurve(srcNode.name(), attr, withNamespace=True)
 
                     if srcCurve:
                         dstAttr.setAnimCurve(

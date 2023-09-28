@@ -36,18 +36,19 @@ class SearchWidget(QtWidgets.QLineEdit):
         self._dataset = None
         self._spaceOperator = "and"
         self._iconButton = QtWidgets.QPushButton(self)
+        self._iconButton.setObjectName("searchIconWidget")
         self._iconButton.clicked.connect(self._iconClicked)
 
-        icon = studiolibrary.resource.icon("search")
+        icon = studiolibrary.resource.icon("magnifying-glass.svg")
         self.setIcon(icon)
 
         self._clearButton = QtWidgets.QPushButton(self)
         self._clearButton.setCursor(QtCore.Qt.ArrowCursor)
-        icon = studiolibrary.resource.icon("cross")
+        icon = studiolibrary.resource.icon("xmark")
         self._clearButton.setIcon(icon)
         self._clearButton.setToolTip("Clear all search text")
         self._clearButton.clicked.connect(self._clearClicked)
-        self._clearButton.setStyleSheet("background-color: transparent;")
+        self._clearButton.setStyleSheet("QFrame {background-color: transparent;}")
 
         self.setPlaceholderText(self.PLACEHOLDER_TEXT)
         self.textChanged.connect(self._textChanged)
@@ -145,6 +146,9 @@ class SearchWidget(QtWidgets.QLineEdit):
         else:
             self._clearButton.hide()
 
+        self.setProperty('hasText', bool(self.text()))
+        self.setStyleSheet(self.styleSheet())
+
     def contextMenuEvent(self, event):
         """
         Triggered when the user right clicks on the search widget.
@@ -217,8 +221,13 @@ class SearchWidget(QtWidgets.QLineEdit):
         """
         menu = QtWidgets.QMenu(self)
 
+        # Adding a blank icon fixes the text alignment issue when using Qt 5.12.+
+        icon = studiolibrary.resource.icon("blank")
+
         subMenu = self.createStandardContextMenu()
         subMenu.setTitle("Edit")
+        subMenu.setIcon(icon)
+
         menu.addMenu(subMenu)
 
         subMenu = self.createSpaceOperatorMenu(menu)
@@ -303,10 +312,7 @@ class SearchWidget(QtWidgets.QLineEdit):
         self.setTextMargins(self.height(), 0, 0, 0)
         size = QtCore.QSize(self.height(), self.height())
 
-        self._iconButton.setIconSize(size)
         self._iconButton.setFixedSize(size)
-
-        self._clearButton.setIconSize(size)
 
         x = self.width() - self.height()
         self._clearButton.setGeometry(x, 0, self.height(), self.height())

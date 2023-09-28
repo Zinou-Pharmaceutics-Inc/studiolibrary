@@ -23,10 +23,16 @@ import getpass
 import tempfile
 import platform
 import threading
+import traceback
 import collections
 import distutils.version
 
 from datetime import datetime
+
+try:
+    from collections import Mapping
+except ImportError:
+    from collections.abc import Mapping
 
 # Use the built-in version of scandir/walk if possible,
 # otherwise use the scandir module version
@@ -52,7 +58,7 @@ __all__ = [
     "setLibraries",
     "removeLibrary",
     "defaultLibrary",
-    "isLatestRelease",
+    "checkForUpdates",
     "read",
     "write",
     "update",
@@ -90,7 +96,6 @@ __all__ = [
     "timeAgo",
     "modules",
     "setDebugMode",
-    "sendAnalytics",
     "showInFolder",
     "stringToList",
     "listToString",
@@ -245,37 +250,6 @@ def setLibraries(libraries):
     remove = set(old) - set(new)
     for name in remove:
         removeLibrary(name)
-
-
-def isLatestRelease():
-    """
-    Check if the installed version of the Studio Library is the latest.
-
-    :rtype: bool
-    """
-    return False
-
-    url = "https://api.github.com/repos/krathjen/studiolibrary/releases/latest"
-    try:
-        f = urllib.request.urlopen(url)
-        result = json.load(f)
-    except Exception:
-        return False
-
-    if result:
-        latestVersion = result.get('tag_name', '0.0.0')
-        currentVersion = studiolibrary.__version__
-
-        # Ignore beta releases if the current version is not beta
-        if "b" in latestVersion and "b" not in currentVersion:
-            return False
-
-        v1 = distutils.version.LooseVersion(latestVersion)
-        v2 = distutils.version.LooseVersion(currentVersion)
-
-        return v1 > v2
-
-    return False
 
 
 def modules():
@@ -862,7 +836,7 @@ def update(data, other):
     :rtype: dict 
     """
     for key, value in other.items():
-        if isinstance(value, collections.Mapping):
+        if isinstance(value, Mapping):
             data[key] = update(data.get(key, {}), value)
         else:
             data[key] = value
@@ -1304,43 +1278,43 @@ def timeAgo(timeStamp):
         if secondsDiff < 10:
             return "just now"
         if secondsDiff < 60:
-            return str(secondsDiff) + " seconds ago"
+            return "{:.0f} seconds ago".format(secondsDiff)
         if secondsDiff < 120:
             return "a minute ago"
         if secondsDiff < 3600:
-            return str(secondsDiff / 60) + " minutes ago"
+            return "{:.0f} minutes ago".format(secondsDiff / 60)
         if secondsDiff < 7200:
             return "an hour ago"
         if secondsDiff < 86400:
-            return str(secondsDiff / 3600) + " hours ago"
+            return "{:.0f} hours ago".format(secondsDiff / 3600)
 
     if dayDiff == 1:
         return "yesterday"
 
     if dayDiff < 7:
-        return str(dayDiff) + " days ago"
+        return "{:.0f} days ago".format(dayDiff)
 
     if dayDiff < 31:
         v = dayDiff / 7
         if v == 1:
-            return str(v) + " week ago"
-        return str(dayDiff / 7) + " weeks ago"
+            return "{:.0f} week ago".format(v)
+        return "{:.0f} weeks ago".format(dayDiff / 7)
 
     if dayDiff < 365:
         v = dayDiff / 30
         if v == 1:
-            return str(v) + " month ago"
-        return str(v) + " months ago"
+            return "{:.0f} month ago".format(v)
+        return "{:.0f} months ago".format(v)
 
     v = dayDiff / 365
     if v == 1:
-        return str(v) + " year ago"
-    return str(v) + " years ago"
+        return "{:.0f} year ago".format(v)
+    return "{:.0f} years ago".format(v)
 
 
 def userUuid():
     """
-    Return a uuid4 for the user.
+    Return a unique uuid4 for each user.
     
     This does not compromise privacy as it generates a random uuid4 string
     for the current user.
@@ -1348,83 +1322,15 @@ def userUuid():
     :rtype: str
     """
     path = os.path.join(localPath(), "settings.json")
-    data = readJson(path)
-    userUuid_ = data.get("userUuid")
+    userUuid_ = readJson(path).get("userUuid")
 
     if not userUuid_:
-        userUuid_ = str(uuid.uuid4())
-        data = {"userUuid": userUuid_}
-        updateJson(path, data)
+        updateJson(path, {"userUuid": str(uuid.uuid4())})
+
+        # Read the uuid again to make sure its persistent
+        userUuid_ = readJson(path).get("userUuid")
 
     return userUuid_
-
-
-def sendAnalytics(
-        name,
-        version="1.0.0",
-        an="StudioLibrary",
-        tid=None,
-):
-    """
-    Send an analytic event to google analytics.
-    
-    This is only used once and is not used to send any personal/user data.
-
-    Example:
-        # logs an event named "mainWindow"
-        sendAnalytics("mainWindow")
-
-    :type name: str
-    :type version: str
-    :type an: str
-    :type tid: str
-    :rtype: None
-    """
-    def _send(url):
-        try:
-            url = url.replace(" ", "")
-            f = urllib.request.urlopen(url)
-        except Exception:
-            pass
-
-    # Ignore analytics when reloading
-    if os.environ.get("STUDIO_LIBRARY_RELOADED") == "1":
-        return
-
-    if not studiolibrary.config.get('analyticsEnabled'):
-        return
-
-    tid = tid or studiolibrary.config.get('analyticsId')
-    cid = userUuid()
-
-    # In python 2.7 the getdefaultlocale function could return a None "ul"
-    ul, _ = locale.getdefaultlocale()
-    ul = ul or ""
-    ul = ul.replace("_", "-").lower()
-
-    tid = "UA-50172384-3"
-    url = "https://www.google-analytics.com/collect?" \
-          "v=1" \
-          "&ul={ul}" \
-          "&tid={tid}" \
-          "&an={an}" \
-          "&av={av}" \
-          "&cid={cid}" \
-          "&t=pageview" \
-          "&dp=/{name}" \
-          "&dt={av}" \
-
-    url = url.format(
-        tid=tid,
-        an=an,
-        av=version,
-        cid=cid,
-        name=name,
-        ul=ul,
-    )
-
-    t = threading.Thread(target=_send, args=(url,))
-    t.start()
 
 
 def showInFolder(path):
@@ -1465,6 +1371,81 @@ def showInFolder(path):
 
     logger.info("Call: '%s' with arguments: %s", cmd.__name__, args)
     cmd(*args)
+
+
+global DCC_INFO
+
+try:
+    import maya.cmds
+    DCC_INFO = {
+        "name": "maya",
+        "version": maya.cmds.about(q=True, version=True)
+    }
+except Exception as error:
+    DCC_INFO = {
+        "name": "undefined",
+        "version": "undefined",
+    }
+
+
+def osVersion():
+    try:
+        # Fix for Windows 11 returning the wrong version
+        if platform.system().lower() == "windows" and platform.release() == "10" and sys.getwindowsversion().build >= 22000:
+            return "11"
+    finally:
+        return platform.release().replace(' ', '%20')
+
+
+def checkForUpdates():
+    """
+    This function should only be used once every session unless specified by the user.
+
+    Returns True if a newer release is found for the given platform.
+
+    :rtype: dict
+    """
+    if os.environ.get("STUDIO_LIBRARY_RELOADED") == "1":
+        return {}
+
+    if not studiolibrary.config.get('checkForUpdatesEnabled', True):
+        return {}
+
+    # In python 2.7 the getdefaultlocale function could return a None "ul"
+    try:
+        ul, _ = locale.getdefaultlocale()
+        ul = ul or "undefined"
+        ul = ul.replace("_", "-").lower()
+    except Exception as error:
+        ul = "undefined"
+
+    try:
+        uid = userUuid() or "undefined"
+        url = "https://app.studiolibrary.com/releases?uid={uid}&v={v}&dv={dv}&dn={dn}&os={os}&ov={ov}&pv={pv}&ul={ul}"
+        url = url.format(
+            uid=uid,
+            v=studiolibrary.__version__,
+            dn=DCC_INFO.get("name").replace(' ', '%20'),
+            dv=DCC_INFO.get("version").replace(' ', '%20'),
+            os=platform.system().lower().replace(' ', '%20'),
+            ov=osVersion(),
+            pv=platform.python_version().replace(' ', '%20'),
+            ul=ul,
+        )
+
+        response = urllib.request.urlopen(url)
+
+        # Check the HTTP status code
+        if response.getcode() == 200:
+            json_content = response.read().decode('utf-8')
+            data = json.loads(json_content)
+            return data
+
+    except Exception as error:
+        logger.debug("Exception occurred:\n%s", traceback.format_exc())
+        pass
+
+    return {}
 
 
 def testNormPath():

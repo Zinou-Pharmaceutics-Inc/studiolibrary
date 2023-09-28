@@ -396,8 +396,12 @@ class LibraryItem(studiolibrary.widgets.Item):
         :type menu: QtWidgets.QMenu
         :type items: list[LibraryItem] or None
         """
+        # Adding a blank icon fixes the text alignment issue when using Qt 5.12.+
+        icon = studiolibrary.resource.icon("blank")
+
         action = QtWidgets.QAction("Rename", menu)
         action.triggered.connect(self.showRenameDialog)
+        action.setIcon(icon)
         menu.addAction(action)
 
         action = QtWidgets.QAction("Move to", menu)
@@ -757,10 +761,14 @@ class LibraryItem(studiolibrary.widgets.Item):
             parent,
             "Rename item",
             "Rename the current item to:",
-            inputText=self.name()
+            inputText=self.name(),
+            buttons=[
+                ("Rename", QtWidgets.QDialogButtonBox.AcceptRole),
+                ("Cancel", QtWidgets.QDialogButtonBox.RejectRole)
+            ]
         )
 
-        if button == QtWidgets.QDialogButtonBox.Ok:
+        if button == "Rename":
             try:
                 self.rename(name)
 
@@ -782,9 +790,10 @@ class LibraryItem(studiolibrary.widgets.Item):
         title = "Move To..."
         path = os.path.dirname(os.path.dirname(self.path()))
 
-        dst = QtWidgets.QFileDialog.getExistingDirectory(parent, title, path)
+        dst = QtWidgets.QFileDialog.getExistingDirectory(None, title, path)
 
         if dst:
+            dst = "{}/{}".format(dst, os.path.basename(self.path()))
             try:
                 self.move(dst)
             except Exception as error:
@@ -822,8 +831,10 @@ class LibraryItem(studiolibrary.widgets.Item):
         text = 'Would you like to move the existing item "{}" to the trash?'
         text = text.format(os.path.basename(self.path()))
 
-        buttons = QtWidgets.QDialogButtonBox.Yes | \
-                  QtWidgets.QDialogButtonBox.Cancel
+        buttons = [
+            QtWidgets.QDialogButtonBox.Yes,
+            QtWidgets.QDialogButtonBox.Cancel
+        ]
 
         try:
             QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.ArrowCursor)
