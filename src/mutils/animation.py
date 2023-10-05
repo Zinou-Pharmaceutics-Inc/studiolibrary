@@ -1,11 +1,11 @@
 # Copyright 2020 by Kurt Rathjen. All Rights Reserved.
 #
-# This library is free software: you can redistribute it and/or modify it 
-# under the terms of the GNU Lesser General Public License as published by 
-# the Free Software Foundation, either version 3 of the License, or 
-# (at your option) any later version. This library is distributed in the 
-# hope that it will be useful, but WITHOUT ANY WARRANTY; without even the 
-# implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+# This library is free software: you can redistribute it and/or modify it
+# under the terms of the GNU Lesser General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version. This library is distributed in the
+# hope that it will be useful, but WITHOUT ANY WARRANTY; without even the
+# implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 # See the GNU Lesser General Public License for more details.
 # You should have received a copy of the GNU Lesser General Public
 # License along with this library. If not, see <http://www.gnu.org/licenses/>.
@@ -57,7 +57,7 @@ class OutOfBoundsError(AnimationTransferError):
 def validateAnimLayers():
     """
     Check if the selected animation layer can be exported.
-    
+
     :raise: AnimationTransferError
     """
     if maya.cmds.about(q=True, batch=True):
@@ -98,12 +98,12 @@ def saveAnim(
     Example:
         import mutils
         mutils.saveAnim(
-            path="c:/example.anim", 
+            path="c:/example.anim",
             objects=["control1", "control2"]
             time=(1, 20),
             metadata={'description': 'Example anim'}
             )
-            
+
     :type path: str
     :type objects: None or list[str]
     :type time: (int, int) or None
@@ -113,7 +113,7 @@ def saveAnim(
     :type sequencePath: str
     :type metadata: dict or None
     :type bakeConnected: bool
-    
+
     :rtype: mutils.Animation
     """
     # Copy the icon path to the temp location
@@ -395,7 +395,7 @@ class Animation(mutils.Pose):
     def select(self, objects=None, namespaces=None, **kwargs):
         """
         Select the objects contained in the animation.
-        
+
         :type objects: list[str] or None
         :type namespaces: list[str] or None
         :rtype: None
@@ -595,7 +595,7 @@ class Animation(mutils.Pose):
         :type sampleBy: int
         :type fileType: str
         :type bakeConnected: bool
-        
+
         :rtype: None
         """
         objects = list(self.objects().keys())
@@ -641,7 +641,24 @@ class Animation(mutils.Pose):
                 mutils.bakeConnected(objects, time=(start, end), sampleBy=sampleBy)
 
             for name in objects:
-                if maya.cmds.copyKey(name, time=(start, end), includeUpperBound=False, option="keys"):
+                # if maya.cmds.copyKey(name, time=(start, end), includeUpperBound=False, option="keys"):
+                _copyKey = 0
+                if maya.cmds.objectType(name) == "hikIKEffector" or maya.cmds.objectType(name) == "hikFKJoint":
+                    hikAttrList = maya.cmds.listConnections(name, source=False, destination=True, connections=True, plugs=True)
+                    for i in range(0, len(hikAttrList), 2):
+                        disconnectList = hikAttrList[i: i+2]
+                        maya.cmds.disconnectAttr(disconnectList[0], disconnectList[1])
+
+                    _copyKey = maya.cmds.copyKey(name, time=(start, end), includeUpperBound=False, option="keys")
+
+                    for i in range(0, len(hikAttrList), 2):
+                        connectList = hikAttrList[i: i+2]
+                        maya.cmds.connectAttr(connectList[0], connectList[1])
+                else:
+                    _copyKey = maya.cmds.copyKey(name, time=(start, end), includeUpperBound=False, option="keys")
+
+
+                if _copyKey:
                     dup_node = self._duplicate_node(name, "CURVE")
                     # dup_node, = maya.cmds.duplicate(name, name="CURVE", parentOnly=True)
 
@@ -695,7 +712,7 @@ class Animation(mutils.Pose):
                 maya.cmds.select(validCurves)
                 logger.info("Saving animation: %s" % mayaPath)
                 maya.cmds.file(mayaPath, force=True, options='v=0', type=fileType, uiConfiguration=False, exportSelected=True)
-                self.cleanMayaFile(mayaPath)
+                if fileType == "mayaAscii":self.cleanMayaFile(mayaPath)
 
         finally:
             if bakeConnected:
