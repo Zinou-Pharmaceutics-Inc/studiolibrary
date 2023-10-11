@@ -553,7 +553,7 @@ class Animation(mutils.Pose):
         with open(path, "w") as f:
             f.writelines(results)
 
-    def _duplicate_node(self, node_path, duplicate_name):
+    def _duplicate_node(self, node_path, duplicate_name, exsits_hik):
         """Duplicate given node.
 
         :param node_path: Maya path.
@@ -563,7 +563,7 @@ class Animation(mutils.Pose):
         :returns: Duplicated node.
         :rtype: str
         """
-        if maya.cmds.nodeType(node_path) == "transform":
+        if maya.cmds.nodeType(node_path) == "transform" or exsits_hik:
             duplicated_node = maya.cmds.duplicate(node_path,
                                                   name=duplicate_name,
                                                   parentOnly=True)[0]
@@ -643,7 +643,9 @@ class Animation(mutils.Pose):
             for name in objects:
                 # if maya.cmds.copyKey(name, time=(start, end), includeUpperBound=False, option="keys"):
                 _copyKey = 0
+                exsits_hik = 0
                 if maya.cmds.objectType(name) == "hikIKEffector" or maya.cmds.objectType(name) == "hikFKJoint":
+                    exsits_hik = 1
                     hikAttrList = maya.cmds.listConnections(name, source=False, destination=True, connections=True, plugs=True)
                     for i in range(0, len(hikAttrList), 2):
                         disconnectList = hikAttrList[i: i+2]
@@ -659,7 +661,7 @@ class Animation(mutils.Pose):
 
 
                 if _copyKey:
-                    dup_node = self._duplicate_node(name, "CURVE")
+                    dup_node = self._duplicate_node(name, "CURVE", exsits_hik)
                     # dup_node, = maya.cmds.duplicate(name, name="CURVE", parentOnly=True)
 
                     if not FIX_SAVE_ANIM_REFERENCE_LOCKED_ERROR:
