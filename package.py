@@ -2,7 +2,7 @@
 
 name = 'studiolibrary'
 
-version = '2.9.6.b3_hik'
+version = '2.14.1'
 
 requires = ['maya']
 
@@ -11,5 +11,7 @@ build_command = "python -m rezutil build {root}"
 
 def commands():
     global env
-    
+
     env.PYTHONPATH.append("{root}/src")
+
+    env.OPENSSL_ia32cap="~0x200000200000000"
